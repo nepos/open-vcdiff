@@ -32,6 +32,7 @@
 #include <stddef.h>  // size_t, ptrdiff_t
 #include <stdint.h>  // int32_t
 #include <string.h>  // memcpy, memset
+#include <unistd.h>  // usleep
 #include <string>
 #include "addrcache.h"
 #include "checksum.h"
@@ -392,6 +393,17 @@ class VCDiffStreamingDecoderImpl {
     return true;
   }
 
+  bool SetThrottleTime(int new_delay_usec_per_kilobyte) {
+    if (new_delay_usec_per_kilobyte < 10) {
+      VCD_ERROR << "Specified delay of "
+                << new_delay_usec_per_kilobyte
+                << " is too low. Must be a value >= 10"
+                << VCD_ENDL;
+    }
+    delay_usec_per_kilobyte_ = new_delay_usec_per_kilobyte;
+    return true;
+  }
+
   // See description of planned_target_file_size_, below.
   bool HasPlannedTargetFileSize() const {
     return planned_target_file_size_ != kUnlimitedBytes;
@@ -498,8 +510,22 @@ class VCDiffStreamingDecoderImpl {
                    << VCD_ENDL;
         return;
       }
-      memcpy(output_ptr_ + decoded_target_output_position_, data, size);
-      decoded_target_output_position_ += size;
+
+      if (delay_usec_per_kilobyte_ > 0) {
+        while (size > 0) {
+          static const size_t chunk_size = 1024;
+          size_t n = std::min((size_t) 10240, size);
+
+          memcpy(output_ptr_ + decoded_target_output_position_, data, n);
+          usleep(delay_usec_per_kilobyte_ * 10);
+          decoded_target_output_position_ += n;
+          data += n;
+          size -= n;
+        }
+      } else {
+        memcpy(output_ptr_ + decoded_target_output_position_, data, size);
+        decoded_target_output_position_ += size;
+      }
     } else {
       decoded_target_.append(data, size);
     }
@@ -646,6 +672,8 @@ class VCDiffStreamingDecoderImpl {
   size_t maximum_target_file_size_;
 
   size_t maximum_target_window_size_;
+
+  int delay_usec_per_kilobyte_;
 
   // Contains the sum of the decoded sizes of all target windows seen so far,
   // including the expected total size of the current target window in progress
@@ -1483,6 +1511,11 @@ bool VCDiffStreamingDecoder::SetMaximumTargetFileSize(
 bool VCDiffStreamingDecoder::SetMaximumTargetWindowSize(
     size_t new_maximum_target_window_size) {
   return impl_->SetMaximumTargetWindowSize(new_maximum_target_window_size);
+}
+
+bool VCDiffStreamingDecoder::SetThrottleTime(
+    int new_delay_usec_per_kilobyte) {
+  return impl_->SetThrottleTime(new_delay_usec_per_kilobyte);
 }
 
 void VCDiffStreamingDecoder::SetAllowVcdTarget(bool allow_vcd_target) {

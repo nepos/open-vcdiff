@@ -122,6 +122,13 @@ class VCDiffStreamingDecoder {
   // than this limit, it will log an error and stop decoding.
   bool SetMaximumTargetWindowSize(size_t new_maximum_target_window_size);
 
+  // Specifies the decoder throtteling in microseconds per decoded kilobyte.
+  // The decoder will sleep for the given amount of time whenever it has
+  // written a chunk of 1 kilobyte of memory. If this method is not used,
+  // the internal value will default to 0, which means the decoder operates
+  // at maximum speed.
+  bool SetThrottleTime(int new_delay_usec_per_kilobyte);
+
   // This interface must be called before StartDecoding().  If its argument
   // is true, then the VCD_TARGET flag can be specified to allow the source
   // segment to be chosen from the previously-decoded target data.  (This is the
